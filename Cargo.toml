@@ -1,0 +1,12 @@
+[package]
+name = "xsd_to_rs"
+version = "0.1.0"
+edition = "2021"
+license = "COSL-1.0"
+description = "Convert XSD schema files to Rust structs"
+
+[dependencies]
+quick-xml = "0.37"
+clap = { version = "4", features = ["derive"] }
+heck = "0.5"
+anyhow = "1"
