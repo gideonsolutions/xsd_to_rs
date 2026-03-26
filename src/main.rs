@@ -1,18 +1,15 @@
-mod codegen;
-mod parser;
-
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::Parser;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[command(name = "xsd_to_rs", about = "Convert a single XSD file to a Rust module")]
+#[command(name = "xsd_to_rs", about = "Convert XSD files to Rust modules")]
 struct Args {
-    /// Input XSD file
+    /// Input XSD file or directory
     #[arg(short, long)]
     input: PathBuf,
 
-    /// Output Rust file path
+    /// Output Rust file or directory
     #[arg(short, long)]
     output: PathBuf,
 }
@@ -20,27 +17,9 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let xsd = parser::parse_xsd(&args.input)
-        .with_context(|| format!("Failed to parse {}", args.input.display()))?;
-
-    eprintln!(
-        "Parsed {} ({} simple, {} complex types)",
-        args.input.display(),
-        xsd.simple_types.len(),
-        xsd.complex_types.len(),
-    );
-
-    let mut gen = codegen::CodeGenerator::new();
-    gen.generate(&xsd);
-
-    std::fs::write(&args.output, &gen.output)
-        .with_context(|| format!("Failed to write {}", args.output.display()))?;
-
-    eprintln!(
-        "Wrote {} bytes to {}",
-        gen.output.len(),
-        args.output.display()
-    );
-
-    Ok(())
+    if args.input.is_dir() {
+        xsd_to_rs::directory::convert_directory(&args.input, &args.output)
+    } else {
+        xsd_to_rs::convert_file(&args.input, &args.output, &[])
+    }
 }

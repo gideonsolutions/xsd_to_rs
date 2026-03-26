@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:tns="http://example.com/test"
+            targetNamespace="http://example.com/test">
+
+  <xsd:simpleType name="ListType">
+    <xsd:list itemType="xsd:anyURI"/>
+  </xsd:simpleType>
+
+  <xsd:element name="Header" type="xsd:string"/>
+  <xsd:element name="Body" type="xsd:string"/>
+
+  <xsd:complexType name="Envelope">
+    <xsd:sequence>
+      <xsd:element ref="tns:Header" minOccurs="0"/>
+      <xsd:element ref="tns:Body"/>
+    </xsd:sequence>
+  </xsd:complexType>
+
+</xsd:schema>

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+
+  <xsd:simpleType name="FilingStatusType">
+    <xsd:restriction base="xsd:string">
+      <xsd:enumeration value="Single"/>
+      <xsd:enumeration value="MarriedFilingJointly"/>
+      <xsd:enumeration value="HeadOfHousehold"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+
+  <xsd:simpleType name="SSNType">
+    <xsd:restriction base="xsd:string">
+      <xsd:pattern value="[0-9]{9}"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+
+  <xsd:simpleType name="AmountType">
+    <xsd:restriction base="xsd:decimal">
+      <xsd:totalDigits value="12"/>
+      <xsd:fractionDigits value="2"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+
+  <xsd:complexType name="PersonType">
+    <xsd:sequence>
+      <xsd:element name="FirstName" type="xsd:string"/>
+      <xsd:element name="LastName" type="xsd:string"/>
+      <xsd:element name="SSN" type="SSNType"/>
+      <xsd:element name="MiddleInitial" type="xsd:string" minOccurs="0"/>
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <xsd:complexType name="FormType">
+    <xsd:sequence>
+      <xsd:element name="Filer" type="PersonType"/>
+      <xsd:element name="FilingStatus" type="FilingStatusType"/>
+      <xsd:element name="TaxAmount" type="AmountType"/>
+      <xsd:element name="Dependents" type="PersonType" maxOccurs="unbounded" minOccurs="0"/>
+      <xsd:choice minOccurs="0">
+        <xsd:element name="DirectDeposit" type="xsd:string"/>
+        <xsd:element name="MailCheck" type="xsd:string"/>
+      </xsd:choice>
+    </xsd:sequence>
+    <xsd:attribute name="version" type="xsd:string" use="required"/>
+  </xsd:complexType>
+
+</xsd:schema>

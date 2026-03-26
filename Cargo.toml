@@ -6,7 +6,11 @@ license = "COSL-1.0"
 description = "Convert XSD schema files to Rust structs"
 
 [dependencies]
-quick-xml = "0.37"
+anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 heck = "0.5"
-anyhow = "1"
+quick-xml = "0.37"
+walkdir = "2"
+
+[dev-dependencies]
+tempfile = "3"
