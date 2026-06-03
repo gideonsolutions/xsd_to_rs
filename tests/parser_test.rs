@@ -8,15 +8,24 @@ fn parse_simple_types() {
 
     let filing = &xsd.simple_types[0];
     assert_eq!(filing.name, "FilingStatusType");
-    assert_eq!(filing.doc, Some("The filing status for a tax return.".to_string()));
+    assert_eq!(
+        filing.doc,
+        Some("The filing status for a tax return.".to_string())
+    );
     assert_eq!(filing.enumerations.len(), 3);
     assert_eq!(filing.enumerations[0].0, "Single");
-    assert_eq!(filing.enumerations[0].1, Some("Unmarried individual".to_string()));
+    assert_eq!(
+        filing.enumerations[0].1,
+        Some("Unmarried individual".to_string())
+    );
     assert_eq!(filing.enumerations[1].1, None);
 
     let ssn = &xsd.simple_types[1];
     assert_eq!(ssn.name, "SSNType");
-    assert_eq!(ssn.doc, Some("Social Security Number (9 digits).".to_string()));
+    assert_eq!(
+        ssn.doc,
+        Some("Social Security Number (9 digits).".to_string())
+    );
     assert_eq!(ssn.pattern, Some("[0-9]{9}".to_string()));
 
     let amount = &xsd.simple_types[2];
@@ -32,7 +41,10 @@ fn parse_complex_types() {
 
     let person = &xsd.complex_types[0];
     assert_eq!(person.name, "PersonType");
-    assert_eq!(person.doc, Some("Represents a person (filer or dependent).".to_string()));
+    assert_eq!(
+        person.doc,
+        Some("Represents a person (filer or dependent).".to_string())
+    );
     assert_eq!(person.members.len(), 4);
 
     let form = &xsd.complex_types[1];

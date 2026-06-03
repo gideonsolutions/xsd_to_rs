@@ -9,7 +9,11 @@ pub(crate) fn generate_mod_files(
 ) -> Result<()> {
     // When nested as an inner module the root file is `mod.rs`; as a crate root
     // it is `lib.rs`.
-    let root_file = if mod_prefix.is_some() { "mod.rs" } else { "lib.rs" };
+    let root_file = if mod_prefix.is_some() {
+        "mod.rs"
+    } else {
+        "lib.rs"
+    };
     let mut dir_children: BTreeMap<PathBuf, BTreeSet<String>> = BTreeMap::new();
 
     for (rel_path, _) in mod_paths {

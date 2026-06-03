@@ -8,11 +8,18 @@ use std::fmt::Write;
 use util::resolve_type;
 pub(crate) use util::{sanitize_type_name, xsd_base_to_rust};
 
-use crate::types::XsdFile;
+use crate::types::{AttributeDef, SequenceMember, XsdFile};
 
 #[derive(Default)]
 pub struct CodeGenerator {
     pub simple_type_map: HashMap<String, String>,
+    /// Attribute groups available for `<xsd:attributeGroup ref>` expansion.
+    /// Pre-populated with the cross-file registry by the directory converter;
+    /// [`CodeGenerator::generate`] merges in the current file's own groups.
+    pub attribute_groups: HashMap<String, Vec<AttributeDef>>,
+    /// Model groups available for `<xsd:group ref>` expansion, populated the
+    /// same way as `attribute_groups`.
+    pub model_groups: HashMap<String, Vec<SequenceMember>>,
     pub output: String,
 }
 
@@ -39,6 +46,20 @@ impl CodeGenerator {
             writeln!(&mut self.output, "#[allow(unused_imports)]\n{imp}").unwrap();
         }
         writeln!(&mut self.output).unwrap();
+
+        // Make this file's own attribute groups available for `ref` expansion,
+        // without clobbering any cross-file entries already registered.
+        for g in &file.attribute_groups {
+            self.attribute_groups
+                .entry(g.name.clone())
+                .or_insert_with(|| g.attributes.clone());
+        }
+        // Likewise for model groups (`<xsd:group ref>`).
+        for g in &file.model_groups {
+            self.model_groups
+                .entry(g.name.clone())
+                .or_insert_with(|| g.members.clone());
+        }
 
         for st in &file.simple_types {
             let rust_ty = sanitize_type_name(&st.name);
@@ -69,11 +90,7 @@ impl CodeGenerator {
                 let resolved = self.resolve_field_type(type_name);
                 let elem_name = sanitize_type_name(&elem.name);
                 if elem_name != resolved {
-                    writeln!(
-                        &mut self.output,
-                        "pub type {elem_name} = {resolved};\n"
-                    )
-                    .unwrap();
+                    writeln!(&mut self.output, "pub type {elem_name} = {resolved};\n").unwrap();
                 }
             }
         }

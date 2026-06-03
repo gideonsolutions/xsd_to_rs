@@ -151,13 +151,23 @@ impl CodeGenerator {
         let field_name = elem.name.to_snake_case();
         let rust_ty = self.field_type_for_element(elem);
 
-        let ty = match (&elem.max_occurs, elem.min_occurs) {
-            (MaxOccurs::Unbounded, _) => format!("Vec<{rust_ty}>"),
+        // Repeated elements -> Vec (skip when empty); optional elements ->
+        // Option (skip when None); otherwise a plain required field.
+        let (ty, skip) = match (&elem.max_occurs, elem.min_occurs) {
+            (MaxOccurs::Unbounded, _) => (format!("Vec<{rust_ty}>"), Some("Vec::is_empty")),
             (MaxOccurs::Bounded(n), _) if *n > 1 => {
-                format!("Vec<{rust_ty}>")
+                (format!("Vec<{rust_ty}>"), Some("Vec::is_empty"))
             }
-            (_, 0) => format!("Option<{rust_ty}>"),
-            _ => rust_ty,
+            (_, 0) => (format!("Option<{rust_ty}>"), Some("Option::is_none")),
+            _ => (rust_ty, None),
+        };
+
+        let serde_attr = match skip {
+            Some(skip) => format!(
+                "    #[serde(rename = \"{}\", skip_serializing_if = \"{skip}\")]",
+                elem.name
+            ),
+            None => format!("    #[serde(rename = \"{}\")]", elem.name),
         };
 
         if let Some(ref doc) = elem.doc {
@@ -165,8 +175,7 @@ impl CodeGenerator {
         }
         writeln!(
             &mut self.output,
-            "    #[serde(rename = \"{}\")]\n    pub {field_name}: {ty},",
-            elem.name
+            "{serde_attr}\n    pub {field_name}: {ty},"
         )
         .unwrap();
     }

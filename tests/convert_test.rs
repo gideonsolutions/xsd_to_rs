@@ -59,8 +59,14 @@ fn mod_prefix_nests_imports_and_writes_mod_rs() {
         .unwrap();
 
     // Root module file is mod.rs, not lib.rs, when nested.
-    assert!(out_dir.join("mod.rs").exists(), "nested root should be mod.rs");
-    assert!(!out_dir.join("lib.rs").exists(), "nested root should not be lib.rs");
+    assert!(
+        out_dir.join("mod.rs").exists(),
+        "nested root should be mod.rs"
+    );
+    assert!(
+        !out_dir.join("lib.rs").exists(),
+        "nested root should not be lib.rs"
+    );
 
     // Cross-file imports are rewritten under the module prefix.
     let main_rs = std::fs::read_to_string(out_dir.join("main.rs")).unwrap();

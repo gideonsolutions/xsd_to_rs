@@ -41,6 +41,7 @@ pub(super) fn parse_element_start(
     let (min_occurs, max_occurs) = parse_occurs(start);
 
     let mut inline_simple_type = None;
+    let mut inline_complex_type = None;
     let mut doc = None;
     let mut in_doc = false;
     let mut buf = Vec::new();
@@ -56,6 +57,16 @@ pub(super) fn parse_element_start(
                 } else if local == "simpleType" {
                     if let Ok(st) = parse_simple_type(reader, &format!("{name}Inline")) {
                         inline_simple_type = Some(st);
+                        depth -= 1;
+                    }
+                } else if local == "complexType" {
+                    // Anonymous inline complexType. Parse it as a whole (which
+                    // also consumes any descendant simpleTypes, so the branch
+                    // above no longer captures a child's restriction by
+                    // mistake) and tag it with a synthesized `{Element}Type`
+                    // name for later hoisting.
+                    if let Ok(ct) = parse_complex_type(reader, &format!("{name}Type")) {
+                        inline_complex_type = Some(Box::new(ct));
                         depth -= 1;
                     }
                 }
@@ -91,6 +102,7 @@ pub(super) fn parse_element_start(
         max_occurs,
         doc,
         inline_simple_type,
+        inline_complex_type,
     }
 }
 
@@ -106,6 +118,7 @@ pub(super) fn make_element_from_empty(e: &quick_xml::events::BytesStart) -> Elem
         max_occurs,
         doc: None,
         inline_simple_type: None,
+        inline_complex_type: None,
     }
 }
 

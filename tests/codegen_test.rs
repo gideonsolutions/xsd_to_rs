@@ -43,7 +43,9 @@ fn generates_doc_comments_for_enum_variants() {
 #[test]
 fn generates_doc_comments_for_fields() {
     let output = generate("tests/fixtures/simple.xsd");
-    assert!(output.contains("    /// The person's first name.\n    #[serde(rename = \"FirstName\")]"));
+    assert!(
+        output.contains("    /// The person's first name.\n    #[serde(rename = \"FirstName\")]")
+    );
 }
 
 #[test]

@@ -5,7 +5,8 @@ use walkdir::WalkDir;
 
 mod mod_gen;
 
-use crate::convert_file;
+use crate::convert_file_with_groups;
+use crate::types::{AttributeDef, SequenceMember};
 use mod_gen::generate_mod_files;
 
 pub(crate) fn sanitize_ident(s: &str) -> String {
@@ -53,6 +54,14 @@ pub fn convert_directory_with_prefix(
     mod_prefix: Option<&str>,
 ) -> Result<()> {
     let mut entries = Vec::new();
+    // Cross-file registry of attribute groups (name -> attributes), so a
+    // `<xsd:attributeGroup ref>` can be expanded even when the group is defined
+    // in an included file. XSD attributeGroup names are unique within a
+    // namespace, so a flat map across the package is sufficient.
+    let mut attr_groups: HashMap<String, Vec<AttributeDef>> = HashMap::new();
+    // Cross-file registry of model groups (name -> members), same rationale as
+    // `attr_groups`, for `<xsd:group ref>` expansion.
+    let mut model_groups: HashMap<String, Vec<SequenceMember>> = HashMap::new();
 
     for entry in WalkDir::new(input_dir).into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
@@ -72,6 +81,17 @@ pub fn convert_directory_with_prefix(
         out_rel.push(format!("{stem}.rs"));
 
         let xsd = crate::parser::parse_xsd(path)?;
+
+        for g in &xsd.attribute_groups {
+            attr_groups
+                .entry(g.name.clone())
+                .or_insert_with(|| g.attributes.clone());
+        }
+        for g in &xsd.model_groups {
+            model_groups
+                .entry(g.name.clone())
+                .or_insert_with(|| g.members.clone());
+        }
 
         entries.push(XsdEntry {
             abs_path: path.to_path_buf(),
@@ -138,7 +158,13 @@ pub fn convert_directory_with_prefix(
         use_imports.sort();
 
         let out_path = output_dir.join(&entry.out_rel);
-        convert_file(&entry.abs_path, &out_path, &use_imports)?;
+        convert_file_with_groups(
+            &entry.abs_path,
+            &out_path,
+            &use_imports,
+            &attr_groups,
+            &model_groups,
+        )?;
         mod_paths.push((entry.out_rel.clone(), entry.stem.clone()));
     }
 
