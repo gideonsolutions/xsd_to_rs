@@ -3,7 +3,7 @@ use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 
 use super::element::{make_attribute, make_element_from_empty, parse_element_start};
-use super::{get_attr, local_name_owned};
+use super::{get_attr, local_name_end, local_name_owned};
 use crate::types::{ChoiceGroup, ComplexTypeDef, SequenceMember};
 
 pub(super) fn parse_complex_type(reader: &mut Reader<&[u8]>, name: &str) -> Result<ComplexTypeDef> {
@@ -17,6 +17,7 @@ pub(super) fn parse_complex_type(reader: &mut Reader<&[u8]>, name: &str) -> Resu
 
     let mut buf = Vec::new();
     let mut depth = 1i32;
+    let mut in_doc = false;
 
     loop {
         match reader.read_event_into(&mut buf) {
@@ -24,6 +25,9 @@ pub(super) fn parse_complex_type(reader: &mut Reader<&[u8]>, name: &str) -> Resu
                 depth += 1;
                 let local = local_name_owned(e);
                 match local.as_str() {
+                    "documentation" => {
+                        in_doc = true;
+                    }
                     "extension" => {
                         if let Some(base) = get_attr(e, "base") {
                             ct.base_type = Some(base);
@@ -67,7 +71,19 @@ pub(super) fn parse_complex_type(reader: &mut Reader<&[u8]>, name: &str) -> Resu
                     _ => {}
                 }
             }
-            Ok(Event::End(_)) => {
+            Ok(Event::Text(ref t)) => {
+                if in_doc {
+                    let text = t.unescape().unwrap_or_default().trim().to_string();
+                    if !text.is_empty() {
+                        ct.doc = Some(text);
+                    }
+                }
+            }
+            Ok(Event::End(ref e)) => {
+                let local = local_name_end(e);
+                if local == "documentation" {
+                    in_doc = false;
+                }
                 depth -= 1;
                 if depth <= 0 {
                     break;

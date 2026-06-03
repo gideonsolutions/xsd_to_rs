@@ -23,7 +23,27 @@ fn generates_enum_for_enumeration() {
 fn generates_newtype_for_restricted_simple_type() {
     let output = generate("tests/fixtures/simple.xsd");
     assert!(output.contains("pub struct SSNType(pub String);"));
-    assert!(output.contains("pub struct AmountType(pub f64);"));
+    assert!(output.contains("pub struct AmountType(pub Decimal);"));
+}
+
+#[test]
+fn generates_doc_comments_for_types() {
+    let output = generate("tests/fixtures/simple.xsd");
+    assert!(output.contains("/// The filing status for a tax return."));
+    assert!(output.contains("/// Social Security Number (9 digits)."));
+    assert!(output.contains("/// Represents a person (filer or dependent)."));
+}
+
+#[test]
+fn generates_doc_comments_for_enum_variants() {
+    let output = generate("tests/fixtures/simple.xsd");
+    assert!(output.contains("    /// Unmarried individual\n    #[serde(rename = \"Single\")]"));
+}
+
+#[test]
+fn generates_doc_comments_for_fields() {
+    let output = generate("tests/fixtures/simple.xsd");
+    assert!(output.contains("    /// The person's first name.\n    #[serde(rename = \"FirstName\")]"));
 }
 
 #[test]

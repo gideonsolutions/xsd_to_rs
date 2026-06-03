@@ -2,14 +2,24 @@
 <xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
 
   <xsd:simpleType name="FilingStatusType">
+    <xsd:annotation>
+      <xsd:documentation>The filing status for a tax return.</xsd:documentation>
+    </xsd:annotation>
     <xsd:restriction base="xsd:string">
-      <xsd:enumeration value="Single"/>
+      <xsd:enumeration value="Single">
+        <xsd:annotation>
+          <xsd:documentation>Unmarried individual</xsd:documentation>
+        </xsd:annotation>
+      </xsd:enumeration>
       <xsd:enumeration value="MarriedFilingJointly"/>
       <xsd:enumeration value="HeadOfHousehold"/>
     </xsd:restriction>
   </xsd:simpleType>
 
   <xsd:simpleType name="SSNType">
+    <xsd:annotation>
+      <xsd:documentation>Social Security Number (9 digits).</xsd:documentation>
+    </xsd:annotation>
     <xsd:restriction base="xsd:string">
       <xsd:pattern value="[0-9]{9}"/>
     </xsd:restriction>
@@ -23,8 +33,15 @@
   </xsd:simpleType>
 
   <xsd:complexType name="PersonType">
+    <xsd:annotation>
+      <xsd:documentation>Represents a person (filer or dependent).</xsd:documentation>
+    </xsd:annotation>
     <xsd:sequence>
-      <xsd:element name="FirstName" type="xsd:string"/>
+      <xsd:element name="FirstName" type="xsd:string">
+        <xsd:annotation>
+          <xsd:documentation>The person's first name.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
       <xsd:element name="LastName" type="xsd:string"/>
       <xsd:element name="SSN" type="SSNType"/>
       <xsd:element name="MiddleInitial" type="xsd:string" minOccurs="0"/>

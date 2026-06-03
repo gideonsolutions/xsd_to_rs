@@ -3,7 +3,7 @@ use quick_xml::reader::Reader;
 
 use super::complex::parse_complex_type;
 use super::simple::parse_simple_type;
-use super::{get_attr, local_name_owned};
+use super::{get_attr, local_name_end, local_name_owned};
 use crate::types::{AttributeDef, ElementDef, MaxOccurs, TopLevelElement};
 
 fn strip_ns(s: &str) -> &str {
@@ -41,6 +41,8 @@ pub(super) fn parse_element_start(
     let (min_occurs, max_occurs) = parse_occurs(start);
 
     let mut inline_simple_type = None;
+    let mut doc = None;
+    let mut in_doc = false;
     let mut buf = Vec::new();
     let mut depth = 1i32;
 
@@ -49,14 +51,28 @@ pub(super) fn parse_element_start(
             Ok(Event::Start(ref e)) => {
                 depth += 1;
                 let local = local_name_owned(e);
-                if local == "simpleType" {
+                if local == "documentation" {
+                    in_doc = true;
+                } else if local == "simpleType" {
                     if let Ok(st) = parse_simple_type(reader, &format!("{name}Inline")) {
                         inline_simple_type = Some(st);
                         depth -= 1;
                     }
                 }
             }
-            Ok(Event::End(_)) => {
+            Ok(Event::Text(ref t)) => {
+                if in_doc {
+                    let text = t.unescape().unwrap_or_default().trim().to_string();
+                    if !text.is_empty() {
+                        doc = Some(text);
+                    }
+                }
+            }
+            Ok(Event::End(ref e)) => {
+                let local = local_name_end(e);
+                if local == "documentation" {
+                    in_doc = false;
+                }
                 depth -= 1;
                 if depth <= 0 {
                     break;
@@ -73,7 +89,7 @@ pub(super) fn parse_element_start(
         type_name,
         min_occurs,
         max_occurs,
-        doc: None,
+        doc,
         inline_simple_type,
     }
 }

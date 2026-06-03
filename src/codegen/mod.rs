@@ -27,7 +27,11 @@ impl CodeGenerator {
             "// Auto-generated from XSD schema: {}\n\
              // Do not edit manually.\n\n\
              #[allow(unused_imports)]\n\
-             use serde::{{Deserialize, Serialize}};",
+             use serde::{{Deserialize, Serialize}};\n\
+             #[allow(unused_imports)]\n\
+             use rust_decimal::Decimal;\n\
+             #[allow(unused_imports)]\n\
+             use std::str::FromStr;",
             file.path
         )
         .unwrap();
@@ -58,6 +62,18 @@ impl CodeGenerator {
             if let Some(ref ct) = elem.complex_type {
                 if !emitted_complex.contains_key(&ct.name) {
                     self.emit_complex_type(ct);
+                }
+            }
+            // Emit type alias when element name differs from its referenced type
+            if let Some(ref type_name) = elem.type_name {
+                let resolved = self.resolve_field_type(type_name);
+                let elem_name = sanitize_type_name(&elem.name);
+                if elem_name != resolved {
+                    writeln!(
+                        &mut self.output,
+                        "pub type {elem_name} = {resolved};\n"
+                    )
+                    .unwrap();
                 }
             }
         }
