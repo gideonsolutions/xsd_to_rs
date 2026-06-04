@@ -25,13 +25,19 @@ pub(super) fn parse_simple_type(
     let mut buf = Vec::new();
     let mut depth = 1i32;
     let mut current_enum_value: Option<String> = None;
+    let mut in_doc = false;
+    let mut current_enum_doc: Option<String> = None;
 
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) => {
                 depth += 1;
                 let local = local_name_owned(e);
-                handle_facet(&local, e, &mut st, &mut current_enum_value);
+                if local == "documentation" {
+                    in_doc = true;
+                } else {
+                    handle_facet(&local, e, &mut st, &mut current_enum_value);
+                }
             }
             Ok(Event::Empty(ref e)) => {
                 let local = local_name_owned(e);
@@ -42,12 +48,26 @@ pub(super) fn parse_simple_type(
                     }
                 }
             }
+            Ok(Event::Text(ref t)) => {
+                if in_doc {
+                    let text = t.unescape().unwrap_or_default().trim().to_string();
+                    if !text.is_empty() {
+                        if current_enum_value.is_some() {
+                            current_enum_doc = Some(text);
+                        } else {
+                            st.doc = Some(text);
+                        }
+                    }
+                }
+            }
             Ok(Event::End(ref e)) => {
                 depth -= 1;
                 let local = local_name_end(e);
-                if local == "enumeration" {
+                if local == "documentation" {
+                    in_doc = false;
+                } else if local == "enumeration" {
                     if let Some(val) = current_enum_value.take() {
-                        st.enumerations.push((val, None));
+                        st.enumerations.push((val, current_enum_doc.take()));
                     }
                 }
                 if depth <= 0 {

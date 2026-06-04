@@ -23,6 +23,10 @@ pub struct ElementDef {
     pub max_occurs: MaxOccurs,
     pub doc: Option<String>,
     pub inline_simple_type: Option<SimpleTypeDef>,
+    /// An anonymous `<xsd:complexType>` declared directly inside this element.
+    /// Hoisted into a named [`ComplexTypeDef`] (see `parser::hoist`) before
+    /// codegen, with `type_name` rewritten to point at it.
+    pub inline_complex_type: Option<Box<ComplexTypeDef>>,
 }
 
 #[derive(Debug, Clone)]
@@ -38,11 +42,15 @@ pub struct ChoiceGroup {
     pub elements: Vec<ElementDef>,
 }
 
-/// A member of a complex type's body: either a plain element or a choice.
+/// A member of a complex type's body: a plain element, a choice, or a
+/// reference to a named model group (`<xsd:group ref="...">`). Group refs are
+/// expanded inline from the cross-file registry at codegen time, so no
+/// `GroupRef` survives into the emitted output.
 #[derive(Debug, Clone)]
 pub enum SequenceMember {
     Element(Box<ElementDef>),
     Choice(ChoiceGroup),
+    GroupRef { name: String, min_occurs: u64 },
 }
 
 /// Represents an XSD complex type.
@@ -51,8 +59,33 @@ pub struct ComplexTypeDef {
     pub name: String,
     pub members: Vec<SequenceMember>,
     pub attributes: Vec<AttributeDef>,
+    /// Names of `<xsd:attributeGroup ref="...">` referenced by this type. The
+    /// referenced attributes are expanded inline at codegen time from the
+    /// cross-file registry built in `directory`.
+    pub attribute_group_refs: Vec<String>,
     pub base_type: Option<String>,
+    /// True when `base_type` came from `<xsd:simpleContent>` (the base is the
+    /// element's text value, emitted as a `$value` field) rather than
+    /// `<xsd:complexContent>` (the base is flattened in).
+    pub simple_content: bool,
     pub doc: Option<String>,
+}
+
+/// A reusable bundle of attributes (`<xsd:attributeGroup name="...">`),
+/// referenced from complex types via `ref`.
+#[derive(Debug, Clone)]
+pub struct AttributeGroupDef {
+    pub name: String,
+    pub attributes: Vec<AttributeDef>,
+}
+
+/// A reusable model group (`<xsd:group name="...">`): an ordered run of
+/// elements/choices referenced from complex types via `<xsd:group ref="...">`
+/// and expanded inline at codegen time.
+#[derive(Debug, Clone)]
+pub struct ModelGroupDef {
+    pub name: String,
+    pub members: Vec<SequenceMember>,
 }
 
 /// Represents an attribute on a complex type.
@@ -79,5 +112,7 @@ pub struct XsdFile {
     pub simple_types: Vec<SimpleTypeDef>,
     pub complex_types: Vec<ComplexTypeDef>,
     pub elements: Vec<TopLevelElement>,
+    pub attribute_groups: Vec<AttributeGroupDef>,
+    pub model_groups: Vec<ModelGroupDef>,
     pub includes: Vec<String>,
 }

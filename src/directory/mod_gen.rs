@@ -2,7 +2,18 @@ use anyhow::Result;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-pub(crate) fn generate_mod_files(output_dir: &Path, mod_paths: &[(PathBuf, String)]) -> Result<()> {
+pub(crate) fn generate_mod_files(
+    output_dir: &Path,
+    mod_paths: &[(PathBuf, String)],
+    mod_prefix: Option<&str>,
+) -> Result<()> {
+    // When nested as an inner module the root file is `mod.rs`; as a crate root
+    // it is `lib.rs`.
+    let root_file = if mod_prefix.is_some() {
+        "mod.rs"
+    } else {
+        "lib.rs"
+    };
     let mut dir_children: BTreeMap<PathBuf, BTreeSet<String>> = BTreeMap::new();
 
     for (rel_path, _) in mod_paths {
@@ -39,7 +50,7 @@ pub(crate) fn generate_mod_files(output_dir: &Path, mod_paths: &[(PathBuf, Strin
 
     for (dir, children) in &dir_children {
         let mod_file = if dir.as_os_str().is_empty() {
-            output_dir.join("lib.rs")
+            output_dir.join(root_file)
         } else {
             output_dir.join(dir).join("mod.rs")
         };

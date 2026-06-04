@@ -22,7 +22,7 @@ pub(crate) fn xsd_base_to_rust(base: &str) -> &str {
         "integer" | "int" | "long" | "nonNegativeInteger" | "positiveInteger"
         | "negativeInteger" | "nonPositiveInteger" | "short" | "unsignedInt" | "unsignedLong"
         | "unsignedShort" | "byte" | "unsignedByte" => "i64",
-        "decimal" | "float" | "double" => "f64",
+        "decimal" | "float" | "double" => "Decimal",
         "date" | "dateTime" | "time" | "gYear" | "gYearMonth" | "gMonthDay" | "gMonth" | "gDay"
         | "duration" => "String",
         "base64Binary" | "hexBinary" => "String",
@@ -31,7 +31,7 @@ pub(crate) fn xsd_base_to_rust(base: &str) -> &str {
 }
 
 pub(crate) fn is_rust_primitive(ty: &str) -> bool {
-    matches!(ty, "String" | "bool" | "i64" | "f64")
+    matches!(ty, "String" | "bool" | "i64" | "Decimal")
 }
 
 pub(super) fn resolve_type(ty: &str) -> &str {
@@ -45,7 +45,9 @@ pub(crate) fn enum_variant_name(val: &str) -> String {
         .map(|c| c.is_ascii_digit())
         .unwrap_or(false)
     {
-        return format!("V{}", val.replace(['-', '.', ' ', '/'], "_"));
+        let cleaned = val.replace(['-', '.', ' ', '/'], "_");
+        let camel = heck::ToUpperCamelCase::to_upper_camel_case(cleaned.as_str());
+        return format!("V{camel}");
     }
     let cleaned = val
         .replace([' ', '-', '.', '/', '(', ')'], "_")

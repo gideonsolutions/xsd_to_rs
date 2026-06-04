@@ -1,10 +1,12 @@
 use anyhow::{Context, Result};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 mod mod_gen;
 
-use crate::convert_file;
+use crate::convert_file_with_groups;
+use crate::types::{AttributeDef, SequenceMember};
 use mod_gen::generate_mod_files;
 
 pub(crate) fn sanitize_ident(s: &str) -> String {
@@ -36,7 +38,30 @@ struct XsdEntry {
 }
 
 pub fn convert_directory(input_dir: &Path, output_dir: &Path) -> Result<()> {
+    convert_directory_with_prefix(input_dir, output_dir, None)
+}
+
+/// Like [`convert_directory`], but nests the generated tree as an inner module.
+///
+/// When `mod_prefix` is `Some(p)`, every emitted cross-file import becomes
+/// `use crate::<p>::…::*;` (instead of `use crate::…::*;`) and the root module
+/// file is written as `mod.rs` rather than `lib.rs`. Use this when one schema
+/// package is one inner module of a larger crate (e.g. an IRS schema version
+/// inside a per-form crate) rather than being the crate root itself.
+pub fn convert_directory_with_prefix(
+    input_dir: &Path,
+    output_dir: &Path,
+    mod_prefix: Option<&str>,
+) -> Result<()> {
     let mut entries = Vec::new();
+    // Cross-file registry of attribute groups (name -> attributes), so a
+    // `<xsd:attributeGroup ref>` can be expanded even when the group is defined
+    // in an included file. XSD attributeGroup names are unique within a
+    // namespace, so a flat map across the package is sufficient.
+    let mut attr_groups: HashMap<String, Vec<AttributeDef>> = HashMap::new();
+    // Cross-file registry of model groups (name -> members), same rationale as
+    // `attr_groups`, for `<xsd:group ref>` expansion.
+    let mut model_groups: HashMap<String, Vec<SequenceMember>> = HashMap::new();
 
     for entry in WalkDir::new(input_dir).into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
@@ -57,6 +82,17 @@ pub fn convert_directory(input_dir: &Path, output_dir: &Path) -> Result<()> {
 
         let xsd = crate::parser::parse_xsd(path)?;
 
+        for g in &xsd.attribute_groups {
+            attr_groups
+                .entry(g.name.clone())
+                .or_insert_with(|| g.attributes.clone());
+        }
+        for g in &xsd.model_groups {
+            model_groups
+                .entry(g.name.clone())
+                .or_insert_with(|| g.members.clone());
+        }
+
         entries.push(XsdEntry {
             abs_path: path.to_path_buf(),
             out_rel,
@@ -66,10 +102,11 @@ pub fn convert_directory(input_dir: &Path, output_dir: &Path) -> Result<()> {
     }
 
     let canonical_root = std::fs::canonicalize(input_dir)?;
-    let mut mod_paths: Vec<(PathBuf, String)> = Vec::new();
 
+    // Build a map from canonical path to direct includes (also canonical)
+    let mut include_map: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
     for entry in &entries {
-        let mut use_imports = Vec::new();
+        let mut resolved = Vec::new();
         for include in &entry.includes {
             let include_path = entry
                 .abs_path
@@ -77,17 +114,59 @@ pub fn convert_directory(input_dir: &Path, output_dir: &Path) -> Result<()> {
                 .unwrap_or(Path::new(""))
                 .join(include);
             if let Ok(canonical) = include_path.canonicalize() {
-                if let Ok(inc_rel) = canonical.strip_prefix(&canonical_root) {
-                    let mod_path = xsd_rel_to_mod_path(inc_rel);
-                    use_imports.push(format!("use crate::{mod_path}::*;"));
+                resolved.push(canonical);
+            }
+        }
+        if let Ok(canonical) = entry.abs_path.canonicalize() {
+            include_map.insert(canonical, resolved);
+        }
+    }
+
+    // Resolve transitive includes
+    fn collect_transitive(
+        start: &PathBuf,
+        include_map: &HashMap<PathBuf, Vec<PathBuf>>,
+        visited: &mut HashSet<PathBuf>,
+    ) {
+        if let Some(includes) = include_map.get(start) {
+            for inc in includes {
+                if visited.insert(inc.clone()) {
+                    collect_transitive(inc, include_map, visited);
                 }
             }
         }
+    }
+
+    let mut mod_paths: Vec<(PathBuf, String)> = Vec::new();
+
+    for entry in &entries {
+        let canonical = entry.abs_path.canonicalize().unwrap_or_default();
+        let mut all_includes = HashSet::new();
+        collect_transitive(&canonical, &include_map, &mut all_includes);
+
+        let mut use_imports = Vec::new();
+        for inc in &all_includes {
+            if let Ok(inc_rel) = inc.strip_prefix(&canonical_root) {
+                let mod_path = xsd_rel_to_mod_path(inc_rel);
+                let import = match mod_prefix {
+                    Some(prefix) => format!("use crate::{prefix}::{mod_path}::*;"),
+                    None => format!("use crate::{mod_path}::*;"),
+                };
+                use_imports.push(import);
+            }
+        }
+        use_imports.sort();
 
         let out_path = output_dir.join(&entry.out_rel);
-        convert_file(&entry.abs_path, &out_path, &use_imports)?;
+        convert_file_with_groups(
+            &entry.abs_path,
+            &out_path,
+            &use_imports,
+            &attr_groups,
+            &model_groups,
+        )?;
         mod_paths.push((entry.out_rel.clone(), entry.stem.clone()));
     }
 
-    generate_mod_files(output_dir, &mod_paths)
+    generate_mod_files(output_dir, &mod_paths, mod_prefix)
 }
