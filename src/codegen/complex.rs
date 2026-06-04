@@ -79,14 +79,20 @@ impl CodeGenerator {
                     } else {
                         enum_name.clone()
                     };
+                    let skip = if optional {
+                        ", skip_serializing_if = \"Option::is_none\""
+                    } else {
+                        ""
+                    };
+                    // A lone choice maps to quick-xml's `$value` (the variant
+                    // element appears directly). With two or more choices in one
+                    // struct there can only be one `$value`, so each is flattened
+                    // instead — the variant element still serializes inline.
                     if single_choice {
-                        let skip = if optional {
-                            ", skip_serializing_if = \"Option::is_none\""
-                        } else {
-                            ""
-                        };
                         writeln!(&mut self.output, "    #[serde(rename = \"$value\"{skip})]")
                             .unwrap();
+                    } else {
+                        writeln!(&mut self.output, "    #[serde(flatten{skip})]").unwrap();
                     }
                     writeln!(&mut self.output, "    pub {field_name}: {ty},").unwrap();
                     choice_idx += 1;
