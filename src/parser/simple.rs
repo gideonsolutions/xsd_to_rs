@@ -20,6 +20,7 @@ pub(super) fn parse_simple_type(
         min_inclusive: None,
         max_inclusive: None,
         doc: None,
+        is_union: false,
     };
 
     let mut buf = Vec::new();
@@ -35,12 +36,17 @@ pub(super) fn parse_simple_type(
                 let local = local_name_owned(e);
                 if local == "documentation" {
                     in_doc = true;
+                } else if local == "union" {
+                    st.is_union = true;
                 } else {
                     handle_facet(&local, e, &mut st, &mut current_enum_value);
                 }
             }
             Ok(Event::Empty(ref e)) => {
                 let local = local_name_owned(e);
+                if local == "union" {
+                    st.is_union = true;
+                }
                 handle_facet(&local, e, &mut st, &mut current_enum_value);
                 if local == "enumeration" {
                     if let Some(val) = current_enum_value.take() {

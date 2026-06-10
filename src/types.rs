@@ -12,6 +12,11 @@ pub struct SimpleTypeDef {
     pub min_inclusive: Option<String>,
     pub max_inclusive: Option<String>,
     pub doc: Option<String>,
+    /// True for an `<xsd:union>` of string types (e.g. `AllCountriesType` =
+    /// `CountryType` ∪ `{"US"}`). A union's full value set can't be captured by the
+    /// inline restriction alone, so it is emitted as a permissive `String` newtype
+    /// rather than a too-narrow enum.
+    pub is_union: bool,
 }
 
 /// Represents an element inside a complexType sequence.
@@ -35,11 +40,21 @@ pub enum MaxOccurs {
     Unbounded,
 }
 
-/// Represents a choice group (maps to Rust enum).
+/// Represents a choice group.
+///
+/// A *simple* choice (every branch is a single element) maps to a Rust enum: each
+/// element becomes a variant. A *composite* choice — one whose branches are
+/// `<xsd:sequence>`s, so selecting a branch yields more than one co-occurring
+/// element (e.g. `BusinessNameControlTxt` + `BusinessName`) — cannot be a single
+/// `$value` enum, because two sibling elements would collide. Composite choices are
+/// instead flattened to optional fields on the parent struct.
 #[derive(Debug, Clone)]
 pub struct ChoiceGroup {
     pub min_occurs: u64,
     pub elements: Vec<ElementDef>,
+    /// True when any branch is a `<sequence>` (or otherwise structurally grouped),
+    /// so the choice must be flattened to optional fields rather than an enum.
+    pub composite: bool,
 }
 
 /// A member of a complex type's body: a plain element, a choice, or a

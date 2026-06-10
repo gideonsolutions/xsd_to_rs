@@ -4,7 +4,7 @@ use std::fmt::Write;
 
 use super::util::sanitize_type_name;
 use super::CodeGenerator;
-use crate::types::SequenceMember;
+use crate::types::{MaxOccurs, SequenceMember};
 
 /// Force a member to be optional (used when an enclosing group ref has
 /// `minOccurs="0"`): the group may be absent, so each expanded field is too.
@@ -56,9 +56,11 @@ impl CodeGenerator {
         // element appears directly (no `choice_N` wrapper). That only works
         // when the struct has a single choice; with two or more there is no way
         // to disambiguate, so they fall back to the bare field name.
+        // Only *simple* (enum-backed) choices use `$value`/`flatten`; composite
+        // choices are flattened to plain optional fields and don't count here.
         let single_choice = members
             .iter()
-            .filter(|m| matches!(m, SequenceMember::Choice(_)))
+            .filter(|m| matches!(m, SequenceMember::Choice(c) if !c.composite))
             .count()
             == 1;
 
@@ -66,23 +68,50 @@ impl CodeGenerator {
         for member in &members {
             match member {
                 SequenceMember::Element(elem) => self.emit_field(elem),
+                // A composite choice (sequence branches) can't be a single `$value`
+                // enum: a selected branch yields several co-occurring elements. Emit
+                // each branch element as an optional field on the parent instead;
+                // exactly-one-branch is then a business rule, not a type invariant.
+                SequenceMember::Choice(choice) if choice.composite => {
+                    for elem in &choice.elements {
+                        // A flattened branch element may be absent (a different
+                        // branch was chosen), so force it optional.
+                        let mut elem = elem.clone();
+                        elem.min_occurs = 0;
+                        self.emit_field(&elem);
+                    }
+                }
                 SequenceMember::Choice(choice) => {
                     let enum_name = format!("{}Choice{}", ct.name, choice_idx);
                     let field_name = format!("choice_{choice_idx}");
+                    // A choice whose branch elements may repeat (`maxOccurs>1` /
+                    // `unbounded`) selects one branch but lets that element occur
+                    // many times — e.g. an IRIS submission detail with many
+                    // `Form1099ADetail` records. The field is then a `Vec` of the
+                    // variant enum (one entry per occurrence), matching how
+                    // `emit_field` maps a repeating element. The enum variants stay
+                    // single-valued.
+                    let repeating = choice.elements.iter().any(|e| {
+                        matches!(e.max_occurs, MaxOccurs::Unbounded)
+                            || matches!(e.max_occurs, MaxOccurs::Bounded(n) if n > 1)
+                    });
                     // Optional when the choice itself is `minOccurs="0"`, or when
                     // every branch element is optional so selecting none is valid
                     // (e.g. a 2290 payment choice where EFW checks neither box).
                     let optional =
                         choice.min_occurs == 0 || choice.elements.iter().all(|e| e.min_occurs == 0);
-                    let ty = if optional {
-                        format!("Option<{enum_name}>")
+                    let (ty, skip) = if repeating {
+                        (
+                            format!("Vec<{enum_name}>"),
+                            ", skip_serializing_if = \"Vec::is_empty\"",
+                        )
+                    } else if optional {
+                        (
+                            format!("Option<{enum_name}>"),
+                            ", skip_serializing_if = \"Option::is_none\"",
+                        )
                     } else {
-                        enum_name.clone()
-                    };
-                    let skip = if optional {
-                        ", skip_serializing_if = \"Option::is_none\""
-                    } else {
-                        ""
+                        (enum_name.clone(), "")
                     };
                     // A lone choice maps to quick-xml's `$value` (the variant
                     // element appears directly). With two or more choices in one
@@ -120,6 +149,9 @@ impl CodeGenerator {
         choice_idx = 0;
         for member in &members {
             if let SequenceMember::Choice(choice) = member {
+                if choice.composite {
+                    continue; // flattened to optional fields; no enum emitted
+                }
                 let enum_name = format!("{}Choice{}", ct.name, choice_idx);
                 self.emit_choice_enum(&enum_name, choice);
                 choice_idx += 1;

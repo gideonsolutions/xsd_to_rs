@@ -204,6 +204,7 @@ fn parse_choice(reader: &mut Reader<&[u8]>, min_occurs: u64) -> Result<ChoiceGro
     let mut choice = ChoiceGroup {
         min_occurs,
         elements: Vec::new(),
+        composite: false,
     };
     let mut buf = Vec::new();
     let mut depth = 1i32;
@@ -217,12 +218,19 @@ fn parse_choice(reader: &mut Reader<&[u8]>, min_occurs: u64) -> Result<ChoiceGro
                     let elem = parse_element_start(reader, e);
                     choice.elements.push(elem);
                     depth -= 1;
+                } else if matches!(local.as_str(), "sequence" | "choice" | "group") {
+                    // A structurally grouped branch: selecting it yields more than
+                    // one co-occurring element, so this choice can't be a single
+                    // `$value` enum. Flatten it to optional fields instead.
+                    choice.composite = true;
                 }
             }
             Ok(Event::Empty(ref e)) => {
                 let local = local_name_owned(e);
                 if local == "element" {
                     choice.elements.push(make_element_from_empty(e));
+                } else if matches!(local.as_str(), "group") {
+                    choice.composite = true;
                 }
             }
             Ok(Event::End(_)) => {
