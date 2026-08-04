@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A composite choice (sequence branches) whose branches share element names.
+  Modelled on IRS Form 8858 Schedule M, where each transaction-category branch
+  repeats the same columns. Flattening must declare each shared field once.
+-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+
+	<xsd:complexType name="TransactionGrpType">
+		<xsd:sequence>
+			<xsd:element name="Amt" type="xsd:integer" minOccurs="0"/>
+		</xsd:sequence>
+	</xsd:complexType>
+
+	<xsd:complexType name="SharedColumnsType">
+		<xsd:choice>
+			<!-- Branch 1 -->
+			<xsd:sequence>
+				<xsd:element name="CategoryOneInd" type="xsd:string" minOccurs="0"/>
+				<xsd:element name="USFilerGrp" type="TransactionGrpType" minOccurs="0"/>
+				<xsd:element name="ForeignCorpGrp" type="TransactionGrpType" minOccurs="0"/>
+			</xsd:sequence>
+			<!-- Branch 2: repeats USFilerGrp and ForeignCorpGrp at the same type -->
+			<xsd:sequence>
+				<xsd:element name="CategoryTwoInd" type="xsd:string" minOccurs="0"/>
+				<xsd:element name="USFilerGrp" type="TransactionGrpType" minOccurs="0"/>
+				<xsd:element name="ForeignCorpGrp" type="TransactionGrpType" minOccurs="0"/>
+			</xsd:sequence>
+		</xsd:choice>
+	</xsd:complexType>
+
+</xsd:schema>
