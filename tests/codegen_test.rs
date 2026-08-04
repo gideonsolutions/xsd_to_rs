@@ -13,10 +13,16 @@ fn generate(fixture: &str) -> String {
 fn generates_enum_for_enumeration() {
     let output = generate("tests/fixtures/simple.xsd");
     assert!(output.contains("pub enum FilingStatusType {"));
-    assert!(output.contains("#[serde(rename = \"Single\")]"));
     assert!(output.contains("Single,"));
     assert!(output.contains("MarriedFilingJointly,"));
     assert!(output.contains("HeadOfHousehold,"));
+    // String-restriction enums (de)serialize as their bare string value via
+    // explicit impls (not `#[serde(rename)]`), so they emit as text content even
+    // in `$value`/`$text` position rather than as a `<Variant/>` element.
+    assert!(output.contains("impl Serialize for FilingStatusType {"));
+    assert!(output.contains("FilingStatusType::Single => \"Single\","));
+    assert!(output.contains("impl<'de> Deserialize<'de> for FilingStatusType {"));
+    assert!(output.contains("\"Single\" => Ok(FilingStatusType::Single),"));
 }
 
 #[test]
@@ -37,7 +43,7 @@ fn generates_doc_comments_for_types() {
 #[test]
 fn generates_doc_comments_for_enum_variants() {
     let output = generate("tests/fixtures/simple.xsd");
-    assert!(output.contains("    /// Unmarried individual\n    #[serde(rename = \"Single\")]"));
+    assert!(output.contains("    /// Unmarried individual\n    Single,"));
 }
 
 #[test]

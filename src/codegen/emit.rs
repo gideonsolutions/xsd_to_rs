@@ -49,24 +49,75 @@ impl CodeGenerator {
         if let Some(ref doc) = st.doc {
             emit_doc_comment(&mut self.output, doc, "");
         }
-        writeln!(
-            &mut self.output,
-            "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
-        )
-        .unwrap();
         let type_name = sanitize_type_name(&st.name);
+
+        // A string-restriction enum (de)serializes as its bare string value via
+        // explicit impls rather than `#[derive(Serialize, Deserialize)]`. A
+        // derived externally-tagged enum serializes a unit variant as a
+        // `<Variant/>` *element*, which is wrong wherever the value is text
+        // content — `$value`/`$text` position, e.g. a `CheckboxType` inside an
+        // indicator that extends it with attributes — and is rejected by MeF
+        // schema validation (cvc-complex-type.2.2 / X0000-005). A string is
+        // correct in every position and unchanged for plain elements
+        // (`<Elem>val</Elem>`).
+        writeln!(&mut self.output, "#[derive(Debug, Clone, PartialEq)]").unwrap();
         writeln!(&mut self.output, "pub enum {type_name} {{").unwrap();
         for (val, doc) in &st.enumerations {
             let variant = enum_variant_name(val);
             if let Some(doc) = doc {
                 emit_doc_comment(&mut self.output, doc, "    ");
             }
+            writeln!(&mut self.output, "    {variant},").unwrap();
+        }
+        writeln!(&mut self.output, "}}\n").unwrap();
+
+        // Serialize: variant -> its XSD string value.
+        writeln!(&mut self.output, "impl Serialize for {type_name} {{").unwrap();
+        writeln!(
+            &mut self.output,
+            "    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {{"
+        )
+        .unwrap();
+        writeln!(&mut self.output, "        serializer.serialize_str(match self {{").unwrap();
+        for (val, _) in &st.enumerations {
+            let variant = enum_variant_name(val);
+            writeln!(&mut self.output, "            {type_name}::{variant} => \"{val}\",").unwrap();
+        }
+        writeln!(&mut self.output, "        }})").unwrap();
+        writeln!(&mut self.output, "    }}").unwrap();
+        writeln!(&mut self.output, "}}\n").unwrap();
+
+        // Deserialize: XSD string value -> variant.
+        writeln!(
+            &mut self.output,
+            "impl<'de> Deserialize<'de> for {type_name} {{"
+        )
+        .unwrap();
+        writeln!(
+            &mut self.output,
+            "    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {{"
+        )
+        .unwrap();
+        writeln!(
+            &mut self.output,
+            "        match String::deserialize(deserializer)?.as_str() {{"
+        )
+        .unwrap();
+        for (val, _) in &st.enumerations {
+            let variant = enum_variant_name(val);
             writeln!(
                 &mut self.output,
-                "    #[serde(rename = \"{val}\")]\n    {variant},"
+                "            \"{val}\" => Ok({type_name}::{variant}),"
             )
             .unwrap();
         }
+        writeln!(
+            &mut self.output,
+            "            other => Err(serde::de::Error::custom(format!(\"invalid {type_name} value {{other:?}}\"))),"
+        )
+        .unwrap();
+        writeln!(&mut self.output, "        }}").unwrap();
+        writeln!(&mut self.output, "    }}").unwrap();
         writeln!(&mut self.output, "}}\n").unwrap();
     }
 
