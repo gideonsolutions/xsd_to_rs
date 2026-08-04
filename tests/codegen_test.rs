@@ -107,3 +107,27 @@ fn generates_use_imports_when_provided() {
     gen.generate(&xsd, &["use crate::common::efiletypes::*;".into()]);
     assert!(gen.output.contains("use crate::common::efiletypes::*;"));
 }
+
+#[test]
+fn composite_choice_branches_sharing_an_element_declare_it_once() {
+    // Branches of a composite choice are mutually exclusive, so the same
+    // element may appear in several of them (IRS Form 8858 Schedule M repeats
+    // its columns across transaction categories). Flattening must collapse
+    // them: declaring the field per branch is a duplicate-field compile error.
+    let output = generate("tests/fixtures/composite_choice.xsd");
+    assert_eq!(
+        output.matches("pub us_filer_grp:").count(),
+        1,
+        "shared branch element declared more than once\n{output}"
+    );
+    assert_eq!(
+        output.matches("pub foreign_corp_grp:").count(),
+        1,
+        "shared branch element declared more than once\n{output}"
+    );
+    // The branch-discriminating elements are still each emitted, and every
+    // flattened field is optional because another branch may have been chosen.
+    assert!(output.contains("pub category_one_ind: Option<"), "{output}");
+    assert!(output.contains("pub category_two_ind: Option<"), "{output}");
+    assert!(output.contains("pub us_filer_grp: Option<"), "{output}");
+}

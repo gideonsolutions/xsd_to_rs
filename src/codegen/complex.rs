@@ -1,5 +1,5 @@
 use heck::{ToSnakeCase, ToUpperCamelCase};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use super::util::sanitize_type_name;
@@ -64,10 +64,21 @@ impl CodeGenerator {
             .count()
             == 1;
 
+        // Field name -> emitted Rust type, so flattening a composite choice can
+        // tell a legitimate repeat across mutually exclusive branches from a
+        // genuine type conflict. See the composite arm below.
+        let mut emitted: HashMap<String, String> = HashMap::new();
+
         let mut choice_idx = 0usize;
         for member in &members {
             match member {
-                SequenceMember::Element(elem) => self.emit_field(elem),
+                SequenceMember::Element(elem) => {
+                    if !elem.name.is_empty() {
+                        emitted
+                            .insert(elem.name.to_snake_case(), self.field_type_for_element(elem));
+                    }
+                    self.emit_field(elem);
+                }
                 // A composite choice (sequence branches) can't be a single `$value`
                 // enum: a selected branch yields several co-occurring elements. Emit
                 // each branch element as an optional field on the parent instead;
@@ -78,6 +89,27 @@ impl CodeGenerator {
                         // branch was chosen), so force it optional.
                         let mut elem = elem.clone();
                         elem.min_occurs = 0;
+                        if elem.name.is_empty() {
+                            continue;
+                        }
+
+                        // The same element can appear in several branches — Form
+                        // 8858 Schedule M repeats columns (a)-(f) across its
+                        // transaction-category branches. Declaring the field once
+                        // per branch is a duplicate-field compile error, so
+                        // collapse them: at most one branch is ever selected, and
+                        // one optional field represents whichever it was.
+                        //
+                        // Only collapse when the type matches too. Same name and a
+                        // different type is a real conflict that must not be
+                        // silently mapped onto one field, so it still emits twice
+                        // and fails loudly at compile time.
+                        let name = elem.name.to_snake_case();
+                        let ty = self.field_type_for_element(&elem);
+                        if emitted.get(&name) == Some(&ty) {
+                            continue;
+                        }
+                        emitted.insert(name, ty);
                         self.emit_field(&elem);
                     }
                 }
