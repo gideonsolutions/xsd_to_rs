@@ -131,3 +131,51 @@ fn composite_choice_branches_sharing_an_element_declare_it_once() {
     assert!(output.contains("pub category_two_ind: Option<"), "{output}");
     assert!(output.contains("pub us_filer_grp: Option<"), "{output}");
 }
+
+#[test]
+fn union_over_enumerations_validates_its_value_set() {
+    // A union stays a String newtype (its value set is wider than the inline
+    // restriction), but when every member is itself an enumeration the set is
+    // known — so it must still reject anything outside it rather than pass a
+    // bad code straight through.
+    let output = generate("tests/fixtures/union_and_repeating_choice.xsd");
+    assert!(output.contains("pub struct AllCountryCodeType(pub String);"), "{output}");
+    assert!(output.contains("pub const ALLOWED: &'static [&'static str] = &["), "{output}");
+    assert!(output.contains("\"US\","), "{output}");
+    assert!(output.contains("\"CA\","), "missing member-type values\n{output}");
+    assert!(output.contains("impl<'de> Deserialize<'de> for AllCountryCodeType"), "{output}");
+
+    // A union with a pattern member has an open value set, so it stays
+    // permissive — validating against the inline literal alone would be wrong.
+    assert!(output.contains("pub struct YearOrVariousType(pub String);"), "{output}");
+    let open = output
+        .split("pub struct YearOrVariousType")
+        .nth(1)
+        .unwrap_or_default();
+    assert!(
+        !open.starts_with("(pub String);\n\nimpl YearOrVariousType"),
+        "open union must not gain an ALLOWED set\n{output}"
+    );
+}
+
+#[test]
+fn repeating_choice_is_never_flattened_as_a_sequence() {
+    // serde cannot flatten a sequence ("can only flatten structs and maps"),
+    // which only shows up at runtime. A repeating choice that cannot claim
+    // `$value` must flatten its branches into plain Vec fields instead.
+    let output = generate("tests/fixtures/union_and_repeating_choice.xsd");
+    // No field may be both flattened and a Vec.
+    let mut prev = "";
+    for line in output.lines() {
+        if prev.contains("serde(flatten") {
+            assert!(
+                !line.contains("Vec<"),
+                "flatten on a sequence: {prev} / {line}\n{output}"
+            );
+        }
+        prev = line;
+    }
+    // The repeating branches became their own Vec fields.
+    assert!(output.contains("pub ssn: Vec<String>"), "{output}");
+    assert!(output.contains("pub ein: Vec<String>"), "{output}");
+}

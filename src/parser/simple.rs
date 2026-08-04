@@ -4,6 +4,16 @@ use quick_xml::reader::Reader;
 use super::{get_attr, local_name_end, local_name_owned};
 use crate::types::SimpleTypeDef;
 
+/// The `memberTypes` attribute of an `<xsd:union>`, split on whitespace and
+/// stripped of namespace prefixes.
+fn union_member_types(e: &quick_xml::events::BytesStart) -> Vec<String> {
+    get_attr(e, "memberTypes")
+        .unwrap_or_default()
+        .split_whitespace()
+        .map(|t| t.rsplit(':').next().unwrap_or(t).to_string())
+        .collect()
+}
+
 pub(super) fn parse_simple_type(
     reader: &mut Reader<&[u8]>,
     name: &str,
@@ -21,6 +31,7 @@ pub(super) fn parse_simple_type(
         max_inclusive: None,
         doc: None,
         is_union: false,
+        member_types: Vec::new(),
     };
 
     let mut buf = Vec::new();
@@ -38,6 +49,7 @@ pub(super) fn parse_simple_type(
                     in_doc = true;
                 } else if local == "union" {
                     st.is_union = true;
+                    st.member_types = union_member_types(e);
                 } else {
                     handle_facet(&local, e, &mut st, &mut current_enum_value);
                 }
@@ -46,6 +58,7 @@ pub(super) fn parse_simple_type(
                 let local = local_name_owned(e);
                 if local == "union" {
                     st.is_union = true;
+                    st.member_types = union_member_types(e);
                 }
                 handle_facet(&local, e, &mut st, &mut current_enum_value);
                 if local == "enumeration" {

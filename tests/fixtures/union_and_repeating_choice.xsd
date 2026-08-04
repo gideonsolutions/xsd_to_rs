@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Two shapes that used to generate code which compiled but failed at runtime:
+  a union over enumeration members, and a repeating choice in a struct that
+  already has another choice (so it cannot claim `$value`).
+-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+
+	<!-- A closed enumeration, used as a union member. -->
+	<xsd:simpleType name="CountryCodeType">
+		<xsd:restriction base="xsd:string">
+			<xsd:enumeration value="CA"/>
+			<xsd:enumeration value="FR"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+
+	<!-- Union of an enumeration plus one more literal: the value set is known. -->
+	<xsd:simpleType name="AllCountryCodeType">
+		<xsd:union memberTypes="CountryCodeType">
+			<xsd:simpleType>
+				<xsd:restriction base="xsd:string">
+					<xsd:enumeration value="US"/>
+				</xsd:restriction>
+			</xsd:simpleType>
+		</xsd:union>
+	</xsd:simpleType>
+
+	<!-- Union with a pattern member: the value set is open, so no validation. -->
+	<xsd:simpleType name="YearOrVariousType">
+		<xsd:union memberTypes="xsd:gYearMonth">
+			<xsd:simpleType>
+				<xsd:restriction base="xsd:string">
+					<xsd:enumeration value="VARIOUS"/>
+				</xsd:restriction>
+			</xsd:simpleType>
+		</xsd:union>
+	</xsd:simpleType>
+
+	<xsd:complexType name="TwoChoicesType">
+		<xsd:sequence>
+			<!-- Choice 1: single-valued. -->
+			<xsd:choice>
+				<xsd:element name="HomeAddress" type="xsd:string"/>
+				<xsd:element name="ForeignAddress" type="xsd:string"/>
+			</xsd:choice>
+			<!-- Choice 2: repeating. With two choices in the struct this one
+			     cannot use `$value`, and `flatten` on a Vec fails at runtime. -->
+			<xsd:choice>
+				<xsd:element name="Ssn" type="xsd:string" maxOccurs="unbounded"/>
+				<xsd:element name="Ein" type="xsd:string" maxOccurs="unbounded"/>
+			</xsd:choice>
+		</xsd:sequence>
+	</xsd:complexType>
+
+</xsd:schema>
