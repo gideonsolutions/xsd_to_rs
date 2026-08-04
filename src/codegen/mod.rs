@@ -20,6 +20,9 @@ pub struct CodeGenerator {
     /// Model groups available for `<xsd:group ref>` expansion, populated the
     /// same way as `attribute_groups`.
     pub model_groups: HashMap<String, Vec<SequenceMember>>,
+    /// Enumeration values per simple type, so a union over enumeration members
+    /// can still validate. Populated per file before emission.
+    pub simple_type_enums: HashMap<String, Vec<String>>,
     pub output: String,
 }
 
@@ -64,6 +67,12 @@ impl CodeGenerator {
         for st in &file.simple_types {
             let rust_ty = sanitize_type_name(&st.name);
             self.simple_type_map.insert(st.name.clone(), rust_ty);
+            if !st.enumerations.is_empty() {
+                self.simple_type_enums.insert(
+                    st.name.clone(),
+                    st.enumerations.iter().map(|(v, _)| v.clone()).collect(),
+                );
+            }
         }
 
         for st in &file.simple_types {

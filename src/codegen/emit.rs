@@ -32,17 +32,80 @@ impl CodeGenerator {
         }
     }
 
+    /// The union's full set of allowed values, or `None` when it cannot be
+    /// enumerated. A union is enumerable only if every `memberTypes` entry
+    /// resolves to an enumeration simple type; a member like `YearMonthType`
+    /// (pattern-restricted) makes the value set open, and rejecting anything
+    /// outside the inline enumeration would then be wrong.
+    fn union_value_set(&self, st: &crate::types::SimpleTypeDef) -> Option<Vec<String>> {
+        if st.member_types.is_empty() {
+            return None;
+        }
+        let mut values: Vec<String> = st.enumerations.iter().map(|(v, _)| v.clone()).collect();
+        for member in &st.member_types {
+            let member_values = self.simple_type_enums.get(member)?;
+            values.extend(member_values.iter().cloned());
+        }
+        (!values.is_empty()).then_some(values)
+    }
+
     fn emit_union_newtype(&mut self, st: &crate::types::SimpleTypeDef) {
         if let Some(ref doc) = st.doc {
             emit_doc_comment(&mut self.output, doc, "");
         }
+        let type_name = sanitize_type_name(&st.name);
+
+        // A union stays a `String` newtype rather than an enum: its value set is
+        // the union of its members', which the inline restriction alone does not
+        // capture. When every member *is* an enumeration the set is still known,
+        // so validate against it on the way in — otherwise the type would accept
+        // any string and silently pass a bad code through to the IRS.
+        let Some(values) = self.union_value_set(st) else {
+            writeln!(
+                &mut self.output,
+                "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
+            )
+            .unwrap();
+            writeln!(&mut self.output, "pub struct {type_name}(pub String);\n").unwrap();
+            return;
+        };
+
+        writeln!(&mut self.output, "#[derive(Debug, Clone, PartialEq, Serialize)]").unwrap();
+        writeln!(&mut self.output, "pub struct {type_name}(pub String);\n").unwrap();
+        writeln!(&mut self.output, "impl {type_name} {{").unwrap();
+        writeln!(&mut self.output, "    /// Every value this union accepts.").unwrap();
         writeln!(
             &mut self.output,
-            "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
+            "    pub const ALLOWED: &'static [&'static str] = &["
         )
         .unwrap();
-        let type_name = sanitize_type_name(&st.name);
-        writeln!(&mut self.output, "pub struct {type_name}(pub String);\n").unwrap();
+        for v in &values {
+            writeln!(&mut self.output, "        {v:?},").unwrap();
+        }
+        writeln!(&mut self.output, "    ];").unwrap();
+        writeln!(&mut self.output, "}}\n").unwrap();
+        writeln!(
+            &mut self.output,
+            "impl<'de> Deserialize<'de> for {type_name} {{"
+        )
+        .unwrap();
+        writeln!(
+            &mut self.output,
+            "    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {{"
+        )
+        .unwrap();
+        writeln!(&mut self.output, "        let s = String::deserialize(deserializer)?;").unwrap();
+        writeln!(&mut self.output, "        if Self::ALLOWED.contains(&s.as_str()) {{").unwrap();
+        writeln!(&mut self.output, "            Ok({type_name}(s))").unwrap();
+        writeln!(&mut self.output, "        }} else {{").unwrap();
+        writeln!(
+            &mut self.output,
+            "            Err(serde::de::Error::custom(format!(\"invalid {type_name} value {{s:?}}\")))"
+        )
+        .unwrap();
+        writeln!(&mut self.output, "        }}").unwrap();
+        writeln!(&mut self.output, "    }}").unwrap();
+        writeln!(&mut self.output, "}}\n").unwrap();
     }
 
     fn emit_enum_type(&mut self, st: &crate::types::SimpleTypeDef) {

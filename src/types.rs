@@ -17,6 +17,9 @@ pub struct SimpleTypeDef {
     /// inline restriction alone, so it is emitted as a permissive `String` newtype
     /// rather than a too-narrow enum.
     pub is_union: bool,
+    /// `<xsd:union memberTypes="...">`, split on whitespace. Empty when the
+    /// union only has inline `<xsd:simpleType>` members.
+    pub member_types: Vec<String>,
 }
 
 /// Represents an element inside a complexType sequence.

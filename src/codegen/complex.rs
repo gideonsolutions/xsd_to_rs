@@ -6,6 +6,16 @@ use super::util::sanitize_type_name;
 use super::CodeGenerator;
 use crate::types::{MaxOccurs, SequenceMember};
 
+/// Whether a choice has a branch element that may occur more than once. Such a
+/// choice selects one branch but lets that element repeat, so it maps to a
+/// `Vec` rather than a single value.
+fn choice_repeats(choice: &crate::types::ChoiceGroup) -> bool {
+    choice.elements.iter().any(|e| {
+        matches!(e.max_occurs, MaxOccurs::Unbounded)
+            || matches!(e.max_occurs, MaxOccurs::Bounded(n) if n > 1)
+    })
+}
+
 /// Force a member to be optional (used when an enclosing group ref has
 /// `minOccurs="0"`): the group may be absent, so each expanded field is too.
 fn make_member_optional(member: &mut SequenceMember) {
@@ -83,7 +93,14 @@ impl CodeGenerator {
                 // enum: a selected branch yields several co-occurring elements. Emit
                 // each branch element as an optional field on the parent instead;
                 // exactly-one-branch is then a business rule, not a type invariant.
-                SequenceMember::Choice(choice) if choice.composite => {
+                // A repeating choice that cannot claim `$value` (because the
+                // struct has more than one choice) has nowhere to go: serde
+                // cannot `flatten` a sequence — it fails at runtime with "can
+                // only flatten structs and maps". Flatten its branches instead,
+                // exactly as for a composite choice.
+                SequenceMember::Choice(choice)
+                    if choice.composite || (choice_repeats(choice) && !single_choice) =>
+                {
                     for elem in &choice.elements {
                         // A flattened branch element may be absent (a different
                         // branch was chosen), so force it optional.
@@ -123,10 +140,7 @@ impl CodeGenerator {
                     // variant enum (one entry per occurrence), matching how
                     // `emit_field` maps a repeating element. The enum variants stay
                     // single-valued.
-                    let repeating = choice.elements.iter().any(|e| {
-                        matches!(e.max_occurs, MaxOccurs::Unbounded)
-                            || matches!(e.max_occurs, MaxOccurs::Bounded(n) if n > 1)
-                    });
+                    let repeating = choice_repeats(choice);
                     // Optional when the choice itself is `minOccurs="0"`, or when
                     // every branch element is optional so selecting none is valid
                     // (e.g. a 2290 payment choice where EFW checks neither box).
@@ -181,8 +195,8 @@ impl CodeGenerator {
         choice_idx = 0;
         for member in &members {
             if let SequenceMember::Choice(choice) = member {
-                if choice.composite {
-                    continue; // flattened to optional fields; no enum emitted
+                if choice.composite || (choice_repeats(choice) && !single_choice) {
+                    continue; // flattened to plain fields; no enum emitted
                 }
                 let enum_name = format!("{}Choice{}", ct.name, choice_idx);
                 self.emit_choice_enum(&enum_name, choice);
