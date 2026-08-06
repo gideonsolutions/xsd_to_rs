@@ -75,3 +75,75 @@ fn mod_prefix_nests_imports_and_writes_mod_rs() {
         "import should be prefixed; got:\n{main_rs}"
     );
 }
+
+/// Pruned conversion emits only the schemas reachable from the given roots:
+/// the root, its transitive includes — and not the orphan sitting beside them
+/// (an IRS MeF package ships the whole common-dependency forest; most of it is
+/// unreachable from the form's returns).
+#[test]
+fn convert_directory_pruned_drops_unreachable_schemas() {
+    let src = TempDir::new().unwrap();
+    std::fs::create_dir_all(src.path().join("deps")).unwrap();
+    std::fs::write(
+        src.path().join("deps/base.xsd"),
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <xsd:complexType name="BaseType">
+    <xsd:sequence><xsd:element name="Name" type="xsd:string"/></xsd:sequence>
+  </xsd:complexType>
+</xsd:schema>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        src.path().join("Return.xsd"),
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <xsd:include schemaLocation="deps/base.xsd"/>
+  <xsd:complexType name="ReturnType">
+    <xsd:sequence><xsd:element name="Base" type="BaseType"/></xsd:sequence>
+  </xsd:complexType>
+</xsd:schema>"#,
+    )
+    .unwrap();
+    // Unreachable from Return.xsd: must not be emitted.
+    std::fs::write(
+        src.path().join("deps/orphan.xsd"),
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <xsd:complexType name="OrphanType">
+    <xsd:sequence><xsd:element name="Junk" type="xsd:string"/></xsd:sequence>
+  </xsd:complexType>
+</xsd:schema>"#,
+    )
+    .unwrap();
+
+    let out = TempDir::new().unwrap();
+    let out_dir = out.path().join("v1");
+    xsd_to_rs::directory::convert_directory_pruned(
+        src.path(),
+        &out_dir,
+        Some("v1"),
+        &[std::path::PathBuf::from("Return.xsd")],
+    )
+    .unwrap();
+
+    assert!(out_dir.join("return.rs").exists());
+    assert!(out_dir.join("deps/base.rs").exists());
+    assert!(
+        !out_dir.join("deps/orphan.rs").exists(),
+        "orphan.xsd is unreachable from the root and must be pruned"
+    );
+    // The module tree only declares what was emitted.
+    let deps_mod = std::fs::read_to_string(out_dir.join("deps/mod.rs")).unwrap();
+    assert!(deps_mod.contains("pub mod base;"));
+    assert!(!deps_mod.contains("orphan"));
+
+    // A missing root is an error, not an empty tree.
+    let err = xsd_to_rs::directory::convert_directory_pruned(
+        src.path(),
+        &out.path().join("v2"),
+        Some("v2"),
+        &[std::path::PathBuf::from("NoSuch.xsd")],
+    );
+    assert!(err.is_err());
+}

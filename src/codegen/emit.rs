@@ -70,7 +70,11 @@ impl CodeGenerator {
             return;
         };
 
-        writeln!(&mut self.output, "#[derive(Debug, Clone, PartialEq, Serialize)]").unwrap();
+        writeln!(
+            &mut self.output,
+            "#[derive(Debug, Clone, PartialEq, Serialize)]"
+        )
+        .unwrap();
         writeln!(&mut self.output, "pub struct {type_name}(pub String);\n").unwrap();
         writeln!(&mut self.output, "impl {type_name} {{").unwrap();
         writeln!(&mut self.output, "    /// Every value this union accepts.").unwrap();
@@ -94,8 +98,16 @@ impl CodeGenerator {
             "    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {{"
         )
         .unwrap();
-        writeln!(&mut self.output, "        let s = String::deserialize(deserializer)?;").unwrap();
-        writeln!(&mut self.output, "        if Self::ALLOWED.contains(&s.as_str()) {{").unwrap();
+        writeln!(
+            &mut self.output,
+            "        let s = String::deserialize(deserializer)?;"
+        )
+        .unwrap();
+        writeln!(
+            &mut self.output,
+            "        if Self::ALLOWED.contains(&s.as_str()) {{"
+        )
+        .unwrap();
         writeln!(&mut self.output, "            Ok({type_name}(s))").unwrap();
         writeln!(&mut self.output, "        }} else {{").unwrap();
         writeln!(
@@ -141,10 +153,18 @@ impl CodeGenerator {
             "    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {{"
         )
         .unwrap();
-        writeln!(&mut self.output, "        serializer.serialize_str(match self {{").unwrap();
+        writeln!(
+            &mut self.output,
+            "        serializer.serialize_str(match self {{"
+        )
+        .unwrap();
         for (val, _) in &st.enumerations {
             let variant = enum_variant_name(val);
-            writeln!(&mut self.output, "            {type_name}::{variant} => \"{val}\",").unwrap();
+            writeln!(
+                &mut self.output,
+                "            {type_name}::{variant} => \"{val}\","
+            )
+            .unwrap();
         }
         writeln!(&mut self.output, "        }})").unwrap();
         writeln!(&mut self.output, "    }}").unwrap();

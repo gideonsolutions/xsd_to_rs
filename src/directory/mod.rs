@@ -38,7 +38,28 @@ struct XsdEntry {
 }
 
 pub fn convert_directory(input_dir: &Path, output_dir: &Path) -> Result<()> {
-    convert_directory_with_prefix(input_dir, output_dir, None)
+    convert_directory_inner(input_dir, output_dir, None, None)
+}
+
+/// Like [`convert_directory_with_prefix`], but emits only the schemas
+/// **reachable** from `roots` (paths relative to `input_dir`) through
+/// transitive `<xsd:include>`s — a tree-shake.
+///
+/// IRS MeF packages ship the entire common-dependency forest alongside a
+/// form's own schemas; a 1040 package carries ~475 corporate-side files of
+/// which the 1040 returns reach fewer than a fifth. Pruning to the reachable
+/// set cuts the generated crate — and rustc's peak memory compiling it — by
+/// roughly a third, with no change to any type that is actually used.
+///
+/// Every root must exist under `input_dir`, or this errors rather than
+/// silently emitting an empty tree.
+pub fn convert_directory_pruned(
+    input_dir: &Path,
+    output_dir: &Path,
+    mod_prefix: Option<&str>,
+    roots: &[PathBuf],
+) -> Result<()> {
+    convert_directory_inner(input_dir, output_dir, mod_prefix, Some(roots))
 }
 
 /// Like [`convert_directory`], but nests the generated tree as an inner module.
@@ -52,6 +73,15 @@ pub fn convert_directory_with_prefix(
     input_dir: &Path,
     output_dir: &Path,
     mod_prefix: Option<&str>,
+) -> Result<()> {
+    convert_directory_inner(input_dir, output_dir, mod_prefix, None)
+}
+
+fn convert_directory_inner(
+    input_dir: &Path,
+    output_dir: &Path,
+    mod_prefix: Option<&str>,
+    roots: Option<&[PathBuf]>,
 ) -> Result<()> {
     let mut entries = Vec::new();
     // Cross-file registry of attribute groups (name -> attributes), so a
@@ -137,9 +167,33 @@ pub fn convert_directory_with_prefix(
         }
     }
 
+    // With roots given, keep only the schemas reachable from them (the roots
+    // themselves plus their transitive includes); otherwise keep everything.
+    let keep: Option<HashSet<PathBuf>> = match roots {
+        None => None,
+        Some(roots) => {
+            let mut keep = HashSet::new();
+            for root in roots {
+                let abs = input_dir.join(root);
+                let canonical = abs
+                    .canonicalize()
+                    .with_context(|| format!("prune root not found: {}", abs.display()))?;
+                collect_transitive(&canonical, &include_map, &mut keep);
+                keep.insert(canonical);
+            }
+            Some(keep)
+        }
+    };
+
     let mut mod_paths: Vec<(PathBuf, String)> = Vec::new();
 
     for entry in &entries {
+        if let Some(keep) = &keep {
+            let canonical = entry.abs_path.canonicalize().unwrap_or_default();
+            if !keep.contains(&canonical) {
+                continue;
+            }
+        }
         let canonical = entry.abs_path.canonicalize().unwrap_or_default();
         let mut all_includes = HashSet::new();
         collect_transitive(&canonical, &include_map, &mut all_includes);

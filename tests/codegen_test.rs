@@ -139,15 +139,30 @@ fn union_over_enumerations_validates_its_value_set() {
     // known — so it must still reject anything outside it rather than pass a
     // bad code straight through.
     let output = generate("tests/fixtures/union_and_repeating_choice.xsd");
-    assert!(output.contains("pub struct AllCountryCodeType(pub String);"), "{output}");
-    assert!(output.contains("pub const ALLOWED: &'static [&'static str] = &["), "{output}");
+    assert!(
+        output.contains("pub struct AllCountryCodeType(pub String);"),
+        "{output}"
+    );
+    assert!(
+        output.contains("pub const ALLOWED: &'static [&'static str] = &["),
+        "{output}"
+    );
     assert!(output.contains("\"US\","), "{output}");
-    assert!(output.contains("\"CA\","), "missing member-type values\n{output}");
-    assert!(output.contains("impl<'de> Deserialize<'de> for AllCountryCodeType"), "{output}");
+    assert!(
+        output.contains("\"CA\","),
+        "missing member-type values\n{output}"
+    );
+    assert!(
+        output.contains("impl<'de> Deserialize<'de> for AllCountryCodeType"),
+        "{output}"
+    );
 
     // A union with a pattern member has an open value set, so it stays
     // permissive — validating against the inline literal alone would be wrong.
-    assert!(output.contains("pub struct YearOrVariousType(pub String);"), "{output}");
+    assert!(
+        output.contains("pub struct YearOrVariousType(pub String);"),
+        "{output}"
+    );
     let open = output
         .split("pub struct YearOrVariousType")
         .nth(1)
